@@ -156,10 +156,10 @@ export default function App() {
   title="Architecture Summary"
   icon={<FileText className="text-cyan-400" />}
 >
-  <p className="text-slate-300">
-    {analysisResult?.summary ||
-      "Upload Terraform files and the architecture summary will appear here."}
-  </p>
+  <pre className="text-slate-300 whitespace-pre-wrap">
+  {analysisResult?.summary ||
+    "Upload Terraform files and the architecture summary will appear here."}
+</pre>
 </Card>
 
         <Card
@@ -167,7 +167,15 @@ export default function App() {
           icon={<Shield className="text-red-400" />}
         >
           <ul className="space-y-2 text-slate-300">
-            <li>Waiting for analysis...</li>
+            {analysisResult?.securityFindings?.length > 0 ? (
+  analysisResult.securityFindings.map((finding, index) => (
+    <li key={index}>
+      <strong>{finding.severity}</strong> - {finding.message}
+    </li>
+  ))
+) : (
+  <li>No security findings detected.</li>
+)}
           </ul>
         </Card>
 
