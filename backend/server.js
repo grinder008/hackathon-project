@@ -1,8 +1,24 @@
+require("dotenv").config({
+  path: __dirname + "/.env",
+});
+
+console.log(
+  "Gemini Key Loaded:",
+  !!process.env.GEMINI_API_KEY
+);
+console.log("Current Directory:", process.cwd());
+
 const express = require("express");
 const cors = require("cors");
 const multer = require("multer");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const app = express();
+
+const genAI = new GoogleGenerativeAI(
+  process.env.GEMINI_API_KEY
+);
+
 
 app.use(cors());
 app.use(express.json());
@@ -17,7 +33,7 @@ app.get("/", (req, res) => {
 });
 
 // Analyze Terraform Files
-app.post("/analyze", upload.array("files"), (req, res) => {
+app.post("/analyze", upload.array("files"), async (req, res) => {
   console.log("Request received!");
 
   const uploadedFiles = req.files || [];
@@ -31,10 +47,14 @@ app.post("/analyze", upload.array("files"), (req, res) => {
 
   let resources = [];
   let securityFindings = [];
+  let terraformCode = "";
+
   const findingMessages = new Set();
 
   uploadedFiles.forEach((file) => {
     const content = file.buffer.toString("utf8");
+
+    terraformCode += content + "\n\n";
 
     console.log(`Processing: ${file.originalname}`);
 
@@ -108,6 +128,7 @@ app.post("/analyze", upload.array("files"), (req, res) => {
   });
 
   // Smart Architecture Summary
+
   const friendlyNames = {
     aws_vpc: "VPC",
     aws_subnet: "Subnet",
@@ -126,75 +147,300 @@ app.post("/analyze", upload.array("files"), (req, res) => {
   };
 
   const categories = {
-  Networking: [
-    "aws_vpc",
-    "aws_subnet",
-    "aws_route_table",
-    "aws_route_table_association",
-    "aws_internet_gateway",
-    "aws_nat_gateway",
-  ],
+    Networking: [
+      "aws_vpc",
+      "aws_subnet",
+      "aws_route_table",
+      "aws_route_table_association",
+      "aws_internet_gateway",
+      "aws_nat_gateway",
+    ],
 
-  Security: [
-    "aws_security_group",
-    "aws_iam_role",
-  ],
+    Security: [
+      "aws_security_group",
+      "aws_iam_role",
+    ],
 
-  Compute: [
-    "aws_instance",
-    "aws_launch_template",
-    "aws_autoscaling_group",
-  ],
+    Compute: [
+      "aws_instance",
+      "aws_launch_template",
+      "aws_autoscaling_group",
+    ],
 
-  Storage: [
-    "aws_s3_bucket",
-  ],
+    Storage: [
+      "aws_s3_bucket",
+    ],
 
-  Database: [
-    "aws_db_instance",
-  ],
+    Database: [
+      "aws_db_instance",
+    ],
 
-  LoadBalancing: [
-    "aws_lb",
-  ],
-};
+    LoadBalancing: [
+      "aws_lb",
+    ],
+  };
 
-const resourceTypes = {};
+  const resourceTypes = {};
 
-resources.forEach((resource) => {
-  resourceTypes[resource.type] =
-    (resourceTypes[resource.type] || 0) + 1;
-});
+  resources.forEach((resource) => {
+    resourceTypes[resource.type] =
+      (resourceTypes[resource.type] || 0) + 1;
+  });
 
-let summary = "";
+  let summary = "";
 
-Object.entries(categories).forEach(([category, types]) => {
-  let categoryContent = "";
+  Object.entries(categories).forEach(([category, types]) => {
+    let categoryContent = "";
 
-  types.forEach((type) => {
-    if (resourceTypes[type]) {
-      const displayName = friendlyNames[type] || type;
+    types.forEach((type) => {
+      if (resourceTypes[type]) {
+        const displayName = friendlyNames[type] || type;
 
-      categoryContent += `- ${resourceTypes[type]} ${displayName}${
-        resourceTypes[type] > 1 ? "s" : ""
-      }\n`;
+        categoryContent += `- ${resourceTypes[type]} ${displayName}${
+          resourceTypes[type] > 1 ? "s" : ""
+        }\n`;
+      }
+    });
+
+    if (categoryContent) {
+      summary += `${category}:\n`;
+      summary += categoryContent;
+      summary += "\n";
     }
   });
 
-  if (categoryContent) {
-    summary += `${category}:\n`;
-    summary += categoryContent;
-    summary += "\n";
-  }
-});
+  // OpenAI Analysis
+
+let aiAnalysis = "AI analysis unavailable.";
+
+try {
+  const model = genAI.getGenerativeModel({
+    model: "gemini-3.6-flash",
+  });
+
+const prompt = `
+You are an elite AWS Cloud Architect, DevSecOps Engineer, Terraform Expert, and Cloud Security Reviewer.
+
+Your task is to perform a professional infrastructure review of the Terraform configuration provided below.
+
+Your audience consists of:
+- Cloud Engineers
+- DevOps Engineers
+- Security Engineers
+- Solution Architects
+- Technical Leads
+- Hackathon Judges
+
+Analyze the Terraform configuration as if it were being reviewed before deployment into a production AWS environment.
+
+===========================================================
+FORMATTING RULES
+===========================================================
+
+- Return Markdown only.
+- Do NOT use HTML tags.
+- Do NOT use Markdown bold (**).
+- Do NOT use Markdown italics (*).
+- Do NOT return Terraform code examples.
+- Do NOT explain Terraform syntax.
+- Do NOT repeat information.
+- Keep sections concise and easy to scan.
+- Use bullet points whenever appropriate.
+- Use emojis only for severity levels.
+
+Severity labels:
+
+🔴 CRITICAL
+🟠 HIGH
+🟡 MEDIUM
+🟢 LOW
+
+Use AWS service names naturally:
+VPC, EC2, Auto Scaling Group, Security Group, IAM, ALB, RDS, S3, Lambda, Route53, CloudWatch, ECS, ECR, EventBridge, SNS, SQS, DynamoDB.
+
+Focus only on meaningful findings and recommendations.
+
+===========================================================
+RETURN EXACTLY THE FOLLOWING SECTIONS
+===========================================================
+
+# Executive Summary
+
+Provide a short summary containing:
+
+- Overall architecture quality
+- Main strengths
+- Main weaknesses
+- Production readiness assessment
+
+Maximum 5 sentences.
+
+# Architecture Summary
+
+Describe:
+
+- Networking architecture
+- Compute architecture
+- Security architecture
+- Storage architecture
+- Database architecture
+
+List detected components.
+
+List important missing components expected in a production-grade environment.
+
+# Security Findings
+
+Order findings by severity.
+
+For every finding use exactly:
+
+## Finding X
+
+Severity:
+<severity>
+
+Issue:
+<description>
+
+Risk:
+<technical and business impact>
+
+# Reliability Findings
+
+Evaluate:
+
+- High Availability
+- Multi-AZ Design
+- Fault Tolerance
+- Disaster Recovery Readiness
+
+List weaknesses and associated risks.
+
+# Cost Optimization Findings
+
+Identify:
+
+- Overprovisioning risks
+- Outdated instance families
+- Missing autoscaling opportunities
+- Cost optimization opportunities
+
+Only include legitimate observations.
+
+# Recommendations
+
+Provide ONLY the TOP 5 recommendations.
+
+Rank them by impact.
+
+Format:
+
+1. Recommendation
+2. Recommendation
+3. Recommendation
+4. Recommendation
+5. Recommendation
+
+Recommendations must be concrete and actionable.
+
+# Terraform Score
+
+Score Categories:
+
+Security: X/25
+Reliability: X/25
+Scalability: X/25
+Best Practices: X/25
+
+Overall Score: XX/100
+
+Provide a short justification.
+
+Scoring Rules:
+
+90-100 = Excellent
+75-89 = Good
+50-74 = Needs Improvement
+0-49 = High Risk
+
+# Production Readiness
+
+Return one value only:
+
+Production Ready
+Partially Production Ready
+Not Production Ready
+
+Then provide a short explanation.
+
+# Risk Level
+
+Return one value only:
+
+Critical
+High
+Medium
+Low
+
+Then provide a short explanation.
+
+===========================================================
+REVIEW PRINCIPLES
+===========================================================
+
+Evaluate against:
+
+- AWS Well-Architected Framework
+- Security Best Practices
+- DevSecOps Principles
+- Infrastructure as Code Best Practices
+- Enterprise Cloud Standards
+- Operational Excellence
+- Reliability
+- Performance Efficiency
+- Cost Optimization
+
+Be strict but fair.
+
+Avoid generic recommendations.
+
+Highlight real risks.
+
+Think like a Principal Cloud Architect performing a production readiness review.
+
+===========================================================
+TERRAFORM CONFIGURATION
+===========================================================
+
+${terraformCode}
+`;
+
+
+  const result = await model.generateContent(prompt);
+
+  aiAnalysis = result.response
+    .text()
+    .replace(/<br\s*\/?>/gi, "\n");
+
+} catch (error) {
+  console.error("Gemini Error:");
+  console.error("Gemini Error Details:");
+  console.error(JSON.stringify(error, null, 2));
+  console.error(error);
+}
 
   res.json({
-    success: true,
-    resourceCount: resources.length,
-    resources,
-    summary,
-    securityFindings,
-  });
+  success: true,
+  resourceCount: resources.length,
+  resources,
+  summary,
+  securityFindings,
+  aiAnalysis,
+  terraformScore,
+  riskLevel,
+  productionReadiness,
+});
 });
 
 app.listen(5555, () => {

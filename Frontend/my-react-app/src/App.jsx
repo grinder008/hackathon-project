@@ -149,7 +149,31 @@ export default function App() {
           </div>
         )}
       </section>
+{analysisResult && (
+  <section className="px-8 mb-6">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
+      <Card title="Terraform Score">
+        <div className="text-5xl font-bold text-yellow-400">
+          {analysisResult?.terraformScore || "--"}
+        </div>
+      </Card>
+
+      <Card title="Risk Level">
+        <div className="text-3xl font-bold text-red-400">
+          {analysisResult?.riskLevel || "--"}
+        </div>
+      </Card>
+
+      <Card title="Production Readiness">
+        <div className="text-2xl font-bold text-cyan-400">
+          {analysisResult?.productionReadiness || "--"}
+        </div>
+      </Card>
+
+    </div>
+  </section>
+)}
       {/* Results */}
       <section className="grid lg:grid-cols-2 gap-6 px-8 pb-10">
         <Card
@@ -178,7 +202,6 @@ export default function App() {
 )}
           </ul>
         </Card>
-
         <Card
           title="Infrastructure Inventory"
           icon={<Server className="text-green-400" />}
@@ -196,15 +219,15 @@ export default function App() {
 ))}
           </ul>
         </Card>
-
-        <Card
-          title="AI Recommendations"
-          icon={<Brain className="text-purple-400" />}
-        >
-          <ul className="space-y-2 text-slate-300">
-            <li>Recommendations will appear here.</li>
-          </ul>
-        </Card>
+<Card
+  title="AI Analysis"
+  icon={<Brain className="text-purple-400" />}
+>
+  <pre className="text-slate-300 whitespace-pre-wrap">
+    {analysisResult?.aiAnalysis ||
+      "No AI analysis available yet."}
+  </pre>
+</Card>
       </section>
     </div>
   );
