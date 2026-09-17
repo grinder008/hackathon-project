@@ -31,6 +31,7 @@ app.post("/analyze", upload.array("files"), (req, res) => {
 
   let resources = [];
   let securityFindings = [];
+  const findingMessages = new Set();
 
   uploadedFiles.forEach((file) => {
     const content = file.buffer.toString("utf8");
@@ -49,13 +50,60 @@ app.post("/analyze", upload.array("files"), (req, res) => {
       });
     });
 
-    // Security Check: Detect 0.0.0.0/0
+    // SSH open to internet
+    if (
+      content.includes("from_port") &&
+      content.includes("22") &&
+      content.includes("0.0.0.0/0")
+    ) {
+      if (!findingMessages.has("ssh")) {
+        securityFindings.push({
+          severity: "HIGH",
+          message: "SSH port 22 exposed to the internet",
+        });
+
+        findingMessages.add("ssh");
+      }
+    }
+
+    // RDP open to internet
+    if (
+      content.includes("from_port") &&
+      content.includes("3389") &&
+      content.includes("0.0.0.0/0")
+    ) {
+      if (!findingMessages.has("rdp")) {
+        securityFindings.push({
+          severity: "HIGH",
+          message: "RDP port 3389 exposed to the internet",
+        });
+
+        findingMessages.add("rdp");
+      }
+    }
+
+    // Public RDS
+    if (content.includes("publicly_accessible = true")) {
+      if (!findingMessages.has("public-rds")) {
+        securityFindings.push({
+          severity: "HIGH",
+          message: "RDS instance is publicly accessible",
+        });
+
+        findingMessages.add("public-rds");
+      }
+    }
+
+    // Generic internet exposure
     if (content.includes("0.0.0.0/0")) {
-      securityFindings.push({
-        severity: "HIGH",
-        message:
-          "Security Group allows access from anywhere (0.0.0.0/0)",
-      });
+      if (!findingMessages.has("open-internet")) {
+        securityFindings.push({
+          severity: "MEDIUM",
+          message: "Internet access detected (0.0.0.0/0)",
+        });
+
+        findingMessages.add("open-internet");
+      }
     }
   });
 
@@ -77,22 +125,68 @@ app.post("/analyze", upload.array("files"), (req, res) => {
     aws_iam_role: "IAM Role",
   };
 
-  const resourceTypes = {};
+  const categories = {
+  Networking: [
+    "aws_vpc",
+    "aws_subnet",
+    "aws_route_table",
+    "aws_route_table_association",
+    "aws_internet_gateway",
+    "aws_nat_gateway",
+  ],
 
-  resources.forEach((resource) => {
-    resourceTypes[resource.type] =
-      (resourceTypes[resource.type] || 0) + 1;
+  Security: [
+    "aws_security_group",
+    "aws_iam_role",
+  ],
+
+  Compute: [
+    "aws_instance",
+    "aws_launch_template",
+    "aws_autoscaling_group",
+  ],
+
+  Storage: [
+    "aws_s3_bucket",
+  ],
+
+  Database: [
+    "aws_db_instance",
+  ],
+
+  LoadBalancing: [
+    "aws_lb",
+  ],
+};
+
+const resourceTypes = {};
+
+resources.forEach((resource) => {
+  resourceTypes[resource.type] =
+    (resourceTypes[resource.type] || 0) + 1;
+});
+
+let summary = "";
+
+Object.entries(categories).forEach(([category, types]) => {
+  let categoryContent = "";
+
+  types.forEach((type) => {
+    if (resourceTypes[type]) {
+      const displayName = friendlyNames[type] || type;
+
+      categoryContent += `- ${resourceTypes[type]} ${displayName}${
+        resourceTypes[type] > 1 ? "s" : ""
+      }\n`;
+    }
   });
 
-  let summary = "This infrastructure contains:\n\n";
-
-  Object.entries(resourceTypes).forEach(([type, count]) => {
-    const displayName = friendlyNames[type] || type;
-
-    summary += `- ${count} ${displayName}${
-      count > 1 ? "s" : ""
-    }\n`;
-  });
+  if (categoryContent) {
+    summary += `${category}:\n`;
+    summary += categoryContent;
+    summary += "\n";
+  }
+});
 
   res.json({
     success: true,
