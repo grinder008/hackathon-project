@@ -16,7 +16,16 @@ function Card({ title, icon, children }) {
 export default function App() {
   const [files, setFiles] = useState([]);
   const [analysisResult, setAnalysisResult] = useState(null);
-  
+  const resourceLabels = {
+  aws_vpc: "VPC",
+  aws_subnet: "Subnet",
+  aws_instance: "EC2 Instance",
+  aws_security_group: "Security Group",
+  aws_s3_bucket: "S3 Bucket",
+  aws_db_instance: "RDS Instance",
+  aws_lb: "Load Balancer",
+  aws_autoscaling_group: "Auto Scaling Group",
+};
 
   const handleFileChange = (event) => {
     const selectedFiles = Array.from(event.target.files);
@@ -219,6 +228,21 @@ export default function App() {
 ))}
           </ul>
         </Card>
+        <Card
+  title="Resource Breakdown"
+  icon={<Server className="text-blue-400" />}
+>
+  <ul className="space-y-2">
+    {analysisResult?.resourceBreakdown &&
+      Object.entries(
+        analysisResult.resourceBreakdown
+      ).map(([type, count]) => (
+        <li key={type}>
+      {resourceLabels[type] || type}: {count}
+        </li>
+      ))}
+  </ul>
+</Card>
 <Card
   title="AI Analysis"
   icon={<Brain className="text-purple-400" />}

@@ -212,6 +212,10 @@ app.post("/analyze", upload.array("files"), async (req, res) => {
   // OpenAI Analysis
 
 let aiAnalysis = "AI analysis unavailable.";
+let terraformScore = "N/A";
+let riskLevel = "Unknown";
+let productionReadiness = "Unknown";
+
 
 try {
   const model = genAI.getGenerativeModel({
@@ -224,12 +228,8 @@ You are an elite AWS Cloud Architect, DevSecOps Engineer, Terraform Expert, and 
 Your task is to perform a professional infrastructure review of the Terraform configuration provided below.
 
 Your audience consists of:
-- Cloud Engineers
 - DevOps Engineers
 - Security Engineers
-- Solution Architects
-- Technical Leads
-- Hackathon Judges
 
 Analyze the Terraform configuration as if it were being reviewed before deployment into a production AWS environment.
 
@@ -422,6 +422,33 @@ ${terraformCode}
   aiAnalysis = result.response
     .text()
     .replace(/<br\s*\/?>/gi, "\n");
+  
+  const scoreMatch =
+    aiAnalysis.match(/Overall Score:\s*(\d+\/100)/i);
+
+if (scoreMatch) {
+  terraformScore = scoreMatch[1];
+
+}const riskMatch =
+  aiAnalysis.match(
+    /# Risk Level\s*([\s\S]*?)(Critical|High|Medium|Low)/i
+  );
+
+if (riskMatch) {
+  riskLevel = riskMatch[2];
+}
+const readinessMatch =
+  aiAnalysis.match(
+    /(Production Ready|Partially Production Ready|Not Production Ready)/i
+  );
+
+if (readinessMatch) {
+  productionReadiness = readinessMatch[1];
+}
+console.log("Terraform Score:", terraformScore);
+console.log("Risk Level:", riskLevel);
+console.log("Production Readiness:", productionReadiness);
+
 
 } catch (error) {
   console.error("Gemini Error:");
@@ -434,6 +461,7 @@ ${terraformCode}
   success: true,
   resourceCount: resources.length,
   resources,
+  resourceBreakdown: resourceTypes,
   summary,
   securityFindings,
   aiAnalysis,
