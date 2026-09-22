@@ -13,13 +13,27 @@ const cors = require("cors");
 const multer = require("multer");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-const app = express();
+const fs = require("fs");
+const path = require("path");
+const { exec } = require("child_process");
 
+const app = express();
 const genAI = new GoogleGenerativeAI(
   process.env.GEMINI_API_KEY
 );
 
+function runCommand(command, cwd) {
+  return new Promise((resolve, reject) => {
+    exec(command, { cwd }, (error, stdout, stderr) => {
+      if (error) {
+        reject(stderr || error.message);
+        return;
+      }
 
+      resolve(stdout);
+    });
+  });
+}
 app.use(cors());
 app.use(express.json());
 
@@ -37,13 +51,21 @@ app.post("/analyze", upload.array("files"), async (req, res) => {
   console.log("Request received!");
 
   const uploadedFiles = req.files || [];
-
+  
   if (uploadedFiles.length === 0) {
     return res.status(400).json({
       success: false,
       message: "No files uploaded",
     });
   }
+  const projectDir = path.join(
+  __dirname,
+  "uploads",
+  Date.now().toString()
+);
+
+fs.mkdirSync(projectDir, { recursive: true });
+
 
   let resources = [];
   let securityFindings = [];
@@ -52,6 +74,15 @@ app.post("/analyze", upload.array("files"), async (req, res) => {
   const findingMessages = new Set();
 
   uploadedFiles.forEach((file) => {
+    const filePath = path.join(
+  projectDir,
+  file.originalname
+);
+
+fs.writeFileSync(
+  filePath,
+  file.buffer
+);
     const content = file.buffer.toString("utf8");
 
     terraformCode += content + "\n\n";
@@ -126,6 +157,34 @@ app.post("/analyze", upload.array("files"), async (req, res) => {
       }
     }
   });
+  
+
+  console.log("Project Directory:", projectDir);
+  console.log("Files in directory:");
+  console.log(fs.readdirSync(projectDir));
+  let planOutput = "";
+
+try {
+  const initOutput = await runCommand(
+    '"C:\\Users\\rkaraoud\\OneDrive - Capgemini\\Desktop\\Terraform\\terraform.exe" init',
+    projectDir
+  );
+
+  console.log("Terraform Init Success:");
+  console.log(initOutput);
+
+ planOutput = await runCommand(
+    '"C:\\Users\\rkaraoud\\OneDrive - Capgemini\\Desktop\\Terraform\\terraform.exe" plan',
+    projectDir
+  );
+
+  console.log("Terraform Plan Success:");
+  console.log(planOutput);
+
+} catch (error) {
+  console.error("Terraform Failed:");
+  console.error(error);
+}
 
   // Smart Architecture Summary
 
@@ -457,7 +516,7 @@ console.log("Production Readiness:", productionReadiness);
   console.error(error);
 }
 
-  res.json({
+res.json({
   success: true,
   resourceCount: resources.length,
   resources,
@@ -468,6 +527,7 @@ console.log("Production Readiness:", productionReadiness);
   terraformScore,
   riskLevel,
   productionReadiness,
+  terraformPlan: planOutput,
 });
 });
 
